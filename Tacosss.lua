@@ -12,7 +12,8 @@ local CLICK_DELAY = 0.07
 local SOUND_IDS = {
     "rbxassetid://6832470734",
     "rbxassetid://6830368128", 
-    "rbxassetid://8091102464"
+    "rbxassetid://8091102464",
+    "rbxassetid://85950680962526"
 }
 
 -- ======== STANY ========
@@ -23,6 +24,7 @@ local isAlive = true
 local monitorTask = nil
 local tacoSoundEnabled = true
 local tacoSoundVolume = 0.6
+local shouldStopClicking = false -- Nowa zmienna do kontroli klikania
 
 -- ======== POMOCNICZE ========
 local function FindObject(parent, name, timeout)
@@ -76,7 +78,6 @@ local soundController = {
     playRandom = function(self)
         if not tacoSoundEnabled or not LocalPlayer.Character then return end
         
-        -- Zapobiegaj odtwarzaniu przy unequip
         if os.clock() - self.lastEquipTime < 0.1 then return end
         self.lastEquipTime = os.clock()
         
@@ -96,7 +97,7 @@ local soundController = {
 -- ======== OBSŁUGA TACO ========
 local function EnsureTaco()
     local char = LocalPlayer.Character
-    if not char then return false end
+    if not char or shouldStopClicking then return false end
 
     local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                      or FindObject(char, TACO_TOOL_NAME, 0.1)
@@ -119,6 +120,7 @@ local function EnsureTaco()
 
     local startTime = os.clock()
     repeat
+        if shouldStopClicking then return false end
         tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                    or FindObject(char, TACO_TOOL_NAME, 0.1)
         if tacoTool then return true end
@@ -130,13 +132,17 @@ end
 
 -- ======== AUTO TACO ========
 local function AutoTaco()
-    if not autoTacoEnabled or isTacoRunning or not isAlive then return end
+    if not autoTacoEnabled or isTacoRunning or not isAlive or shouldStopClicking then return end
     isTacoRunning = true
+    shouldStopClicking = false
 
     local char = LocalPlayer.Character
     local hum = FindObject(char, 'Humanoid', 2)
     local root = FindObject(char, 'HumanoidRootPart', 2)
-    if not (hum and root) then isTacoRunning = false return end
+    if not (hum and root) then 
+        isTacoRunning = false
+        return 
+    end
 
     if not EnsureTaco() then
         isTacoRunning = false
@@ -150,7 +156,7 @@ local function AutoTaco()
         task.wait(0.2)
     end
 
-    while tacoTool and tacoTool.Parent == char and autoTacoEnabled and isAlive do
+    while tacoTool and tacoTool.Parent == char and autoTacoEnabled and isAlive and not shouldStopClicking do
         pcall(mouse1click)
         task.wait(CLICK_DELAY)
         tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
@@ -164,9 +170,9 @@ end
 local function StartMonitor()
     if monitorTask then return end
     monitorTask = task.spawn(function()
-        while autoTacoEnabled do
+        while autoTacoEnabled and not shouldStopClicking do
             task.wait(0.2)
-            if not isAlive then
+            if not isAlive or shouldStopClicking then
                 isTacoRunning = false
                 continue
             end
@@ -184,6 +190,7 @@ end
 
 local function StopMonitor()
     autoTacoEnabled = false
+    shouldStopClicking = true
     if monitorTask then
         monitorTask = nil
     end
@@ -192,6 +199,7 @@ end
 -- ======== OBSŁUGA POSTACI ========
 local function HandleCharacter(char)
     isAlive = true
+    shouldStopClicking = false
     
     -- Podłącz istniejące narzędzia
     for _, tool in ipairs(char:GetChildren()) do
@@ -228,9 +236,11 @@ local function HandleCharacter(char)
         end
     end)
 
-    char:WaitForChild('Humanoid').Died:Connect(function()
+    local humanoid = char:WaitForChild('Humanoid')
+    humanoid.Died:Connect(function()
         isAlive = false
         isTacoRunning = false
+        shouldStopClicking = true
     end)
 end
 
@@ -244,6 +254,7 @@ local toggle = groupbox:AddToggle("auto_taco", {
 })
 toggle:OnChanged(function(value)
     autoTacoEnabled = value
+    shouldStopClicking = not value
     if value then
         StartMonitor()
     else
@@ -269,7 +280,10 @@ groupbox:AddToggle("taco_sound", {
 end)
 
 -- ======== INICJALIZACJA ========
-LocalPlayer.CharacterAdded:Connect(HandleCharacter)
+LocalPlayer.CharacterAdded:Connect(function(char)
+    HandleCharacter(char)
+end)
+
 if LocalPlayer.Character then
     HandleCharacter(LocalPlayer.Character)
 end
@@ -277,5 +291,3 @@ end
 if autoTacoEnabled then
     StartMonitor()
 end
-
-print("Auto Taco System loaded successfully")
