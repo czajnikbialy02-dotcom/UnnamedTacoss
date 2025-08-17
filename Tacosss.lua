@@ -173,7 +173,7 @@ local function PlayTacoSound()
 
     local sound = Instance.new("Sound")
     sound.SoundId = SOUND_ID
-    sound.Volume = 0.5
+    sound.Volume = 0.3
     sound.Parent = root
     sound:Play()
     game:GetService("Debris"):AddItem(sound, 3)
