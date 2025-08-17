@@ -169,7 +169,7 @@ local function SetupSound()
     if not tacoSound then
         tacoSound = Instance.new("Sound")
         tacoSound.SoundId = SOUND_ID
-        tacoSound.Volume = 1 -- adjust volume here (e.g. 0.5 for quieter)
+        tacoSound.Volume = 0.5 -- adjust volume here
         tacoSound.Name = "TacoEquipSound"
         tacoSound.Parent = root
     else
