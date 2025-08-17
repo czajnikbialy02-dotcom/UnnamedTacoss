@@ -150,50 +150,58 @@ toggle:OnChanged(function(value)
 end)
 
 -- ======== CUSTOM TACO SOUND ========
-
+-- i like taco
 -- === CONFIG ===
 local TACO_TOOL_NAME = "[Taco]"
 local SOUND_ID = "rbxassetid://6832470734"
 
 -- === STATE ===
 local tacoSoundEnabled = true
+local tacoSound = nil -- single persistent sound
 
--- === SOUND FUNC ===
-local function PlayTacoSound()
-    if not tacoSoundEnabled then return end
+-- === SOUND SETUP ===
+local function SetupSound()
     local char = LocalPlayer.Character
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head") or char
-    if not root then
-        warn("Brak HRP/Head – gdzie mam zagrać dźwięk?")
-        return
+    if not root then return end
+
+    if not tacoSound then
+        tacoSound = Instance.new("Sound")
+        tacoSound.SoundId = SOUND_ID
+        tacoSound.Volume = 1 -- adjust volume here (e.g. 0.5 for quieter)
+        tacoSound.Name = "TacoEquipSound"
+        tacoSound.Parent = root
+    else
+        tacoSound.Parent = root -- reattach sound on respawn
     end
+end
 
-    print("[DEBUG] ODPALAM DŹWIĘK NA ROOT:", root.Name)
-
-    local sound = Instance.new("Sound")
-    sound.SoundId = SOUND_ID
-    sound.Volume = 0.3
-    sound.Parent = root
-    sound:Play()
-    game:GetService("Debris"):AddItem(sound, 3)
+-- === PLAY SOUND ===
+local function PlayTacoSound()
+    if tacoSoundEnabled and tacoSound then
+        tacoSound:Stop() -- stop any old playback
+        tacoSound:Play()
+    end
 end
 
 -- === HOOK TOOL ===
 local function hookTool(tool)
     if tool.Name ~= TACO_TOOL_NAME then return end
-    print("[DEBUG] Zhookowałem tool:", tool.Name)
+    print("[DEBUG] Hooked tool:", tool.Name)
 
     tool.Equipped:Connect(function()
-        print("[DEBUG] EQUIP TACO DETECTED")
+        print("[DEBUG] Taco Equipped Detected")
         PlayTacoSound()
     end)
 end
 
--- === HOOK CHAR ===
+-- === HOOK CHARACTER ===
 local function hookCharacter(char)
-    print("[DEBUG] Nowa postać")
-    -- obecne toolsy
+    print("[DEBUG] New character loaded")
+    SetupSound()
+
+    -- hook existing tools
     for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
         hookTool(tool)
     end
@@ -203,7 +211,7 @@ local function hookCharacter(char)
         end
     end
 
-    -- przyszłe toolsy
+    -- hook future tools
     LocalPlayer.Backpack.ChildAdded:Connect(hookTool)
     char.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then
@@ -212,24 +220,25 @@ local function hookCharacter(char)
     end)
 end
 
--- start na obecnej postaci
+-- hook current character
 if LocalPlayer.Character then
     hookCharacter(LocalPlayer.Character)
 end
 
--- na respawn
+-- hook respawns
 LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
 -- === UI ===
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
 local groupbox = tab:AddLeftGroupbox("Taco Sound Settings")
-local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
+local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = true })
 
 toggle:OnChanged(function(value)
     tacoSoundEnabled = value
 end)
 
 print("===== CUSTOM TACO SOUND READY =====")
+
 
 
 -- ======== START MONITOR ========
