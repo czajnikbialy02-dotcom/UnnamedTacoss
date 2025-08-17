@@ -36,58 +36,83 @@ local function GetCurrentMoney()
     return tonumber(num) or 0
 end
 
--- ======== AUTO TACO ========
-local function AutoTaco()
-    if not autoTacoEnabled or isTacoRunning or not isAlive then return end
-    isTacoRunning = true
+-- ======== CHECK & GET TACO ========
+local function EnsureTaco()
     local char = LocalPlayer.Character
-    local hum = FindObject(char, 'Humanoid', 2)
-    local root = FindObject(char, 'HumanoidRootPart', 2)
-    if not (hum and root) then isTacoRunning = false return end
+    if not char then return false end
 
-    local shop = FindObject(FindObject(workspace, 'Ignored', 3), 'Shop', 3)
+    local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
+                     or FindObject(char, TACO_TOOL_NAME, 0.1)
+    if tacoTool then return true end -- już mam
+
+    -- nie mam? teleportuj do sklepu
+    local root = FindObject(char, "HumanoidRootPart", 2)
+    local shop = FindObject(FindObject(workspace, "Ignored", 3), "Shop", 3)
     local tacoModel = shop and FindObject(shop, TACO_SHOP_NAME, 3)
-    local click = tacoModel and FindObject(tacoModel, 'ClickDetector', 2)
-    if not click then warn('Taco not found!') isTacoRunning = false return end
-    if GetCurrentMoney() < TACO_COST then isTacoRunning = false return end
+    local click = tacoModel and FindObject(tacoModel, "ClickDetector", 2)
+    if not root or not tacoModel or not click then
+        warn("Taco shop not found!")
+        return false
+    end
+    if GetCurrentMoney() < TACO_COST then
+        warn("Not enough money for Taco!")
+        return false
+    end
 
     local originalCFrame = root.CFrame
     pcall(function() root.CFrame = tacoModel:GetPivot() * CFrame.new(0,0,-2) end)
     task.wait(0.2)
 
-    for i = 1, 15 do
-        if not autoTacoEnabled or GetCurrentMoney() < TACO_COST or not isAlive then break end
-        pcall(fireclickdetector, click, 5)
-        task.wait(0.03)
-    end
-
-    pcall(function() root.CFrame = originalCFrame end)
+    -- kup Taco
+    pcall(fireclickdetector, click, 5)
     task.wait(0.2)
+    pcall(function() root.CFrame = originalCFrame end)
 
+    -- poczekaj aż tool będzie w Backpack/Character
     local startTime = os.clock()
-    local tacoTool
     repeat
-        if not autoTacoEnabled or not isAlive then isTacoRunning = false return end
-        tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) or FindObject(char, TACO_TOOL_NAME, 0.1)
+        tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
+                   or FindObject(char, TACO_TOOL_NAME, 0.1)
+        if tacoTool then return true end
         task.wait(0.1)
-    until tacoTool or os.clock()-startTime > 3
+    until os.clock() - startTime > 3
 
-        if tacoTool and autoTacoEnabled then
-        if tacoTool.Parent == LocalPlayer.Backpack then
-            pcall(function() hum:EquipTool(tacoTool) end)
-            task.wait(0.2)
-        end
-        -- 🔥 fixed loop: only click while equipped
-        while tacoTool 
-        and tacoTool.Parent == char -- must be equipped
-        and autoTacoEnabled 
-        and isAlive do
-            pcall(mouse1click)
-            task.wait(0.07)
-            -- refresh tacoTool reference
-            tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) or FindObject(char, TACO_TOOL_NAME, 0.1)
-        end
+    return false
+end
+
+-- ======== AUTO TACO ========
+local function AutoTaco()
+    if not autoTacoEnabled or isTacoRunning or not isAlive then return end
+    isTacoRunning = true
+
+    local char = LocalPlayer.Character
+    local hum = FindObject(char, 'Humanoid', 2)
+    local root = FindObject(char, 'HumanoidRootPart', 2)
+    if not (hum and root) then isTacoRunning = false return end
+
+    -- sprawdź i kup Taco jeśli trzeba
+    if not EnsureTaco() then
+        isTacoRunning = false
+        return
     end
+
+    -- znajdź tool po zakupie
+    local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
+                     or FindObject(char, TACO_TOOL_NAME, 0.1)
+    if tacoTool.Parent == LocalPlayer.Backpack then
+        pcall(function() hum:EquipTool(tacoTool) end)
+        task.wait(0.2)
+    end
+
+    -- klikaj tylko jeśli jest w ręce
+    while tacoTool and tacoTool.Parent == char and autoTacoEnabled and isAlive do
+        pcall(mouse1click)
+        task.wait(0.07)
+        -- odśwież referencję
+        tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
+                   or FindObject(char, TACO_TOOL_NAME, 0.1)
+    end
+
     isTacoRunning = false
 end
 
