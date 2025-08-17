@@ -174,36 +174,52 @@ local function PlayTacoSound()
     sound.Volume = 2
     sound.PlayOnRemove = true
     sound.Parent = root
-    sound:Destroy() -- PlayOnRemove powoduje odpalenie dźwięku przy usunięciu
+    sound:Destroy() -- -> zagra i od razu zniknie
 end
 
--- === HOOK TOOLS ===
-local function HookCharacter(char)
-    -- nasłuch na toole w Backpacku
-    local function connectTool(tool)
-        if tool.Name == TACO_TOOL_NAME then
-            tool.Equipped:Connect(function()
-                PlayTacoSound()
-            end)
+-- === HOOK TOOL ===
+local function hookTool(tool)
+    if tool.Name ~= TACO_TOOL_NAME then return end
+    -- odpali kiedy tool wejdzie do Character
+    tool.AncestryChanged:Connect(function(_, parent)
+        if parent == LocalPlayer.Character then
+            PlayTacoSound()
+        end
+    end)
+    -- odpali też kiedy normalnie "equipniesz"
+    tool.Equipped:Connect(function()
+        PlayTacoSound()
+    end)
+end
+
+-- === HOOK CHAR ===
+local function hookCharacter(char)
+    -- wszystkie istniejące toolsy
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        hookTool(tool)
+    end
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            hookTool(tool)
         end
     end
 
-    -- podpinamy pod wszystkie obecne toolsy
-    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
-        connectTool(tool)
-    end
-
-    -- podpinamy na przyszłe toolsy
-    LocalPlayer.Backpack.ChildAdded:Connect(connectTool)
+    -- przyszłe toolsy
+    LocalPlayer.Backpack.ChildAdded:Connect(hookTool)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            hookTool(child)
+        end
+    end)
 end
 
--- podpinamy na aktualnej postaci
+-- start na obecnej postaci
 if LocalPlayer.Character then
-    HookCharacter(LocalPlayer.Character)
+    hookCharacter(LocalPlayer.Character)
 end
 
--- podpinamy na respawn
-LocalPlayer.CharacterAdded:Connect(HookCharacter)
+-- na respawn
+LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
 -- === UI ===
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
@@ -215,7 +231,6 @@ toggle:OnChanged(function(value)
 end)
 
 print("===== CUSTOM TACO SOUND READY =====")
-
 
 -- ======== START MONITOR ========
 if autoTacoEnabled then
