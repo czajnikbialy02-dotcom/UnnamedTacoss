@@ -180,38 +180,70 @@ toggle:OnChanged(function(value)
 end)
 
 -- ======== CUSTOM TACO SOUND ========
--- i like taco
--- === CONFIG ===
+-- ======== TACO SOUND SYSTEM ========
 local TACO_TOOL_NAME = "[Taco]"
-local SOUND_ID = "rbxassetid://6832470734"
+local SOUND_IDS = {
+    "rbxassetid://6832470734",  -- Dźwięk 1
+    "rbxassetid://85950680962526",   -- Dźwięk 2 (przykład)
+    "rbxassetid://6830368128",   -- Dźwięk 3
+    "rbxassetid://8091102464",   -- Dźwięk 4
+    "rbxassetid://85950680962526"    -- Dźwięk 5
+}
 
 -- === STATE ===
 local tacoSoundEnabled = true
-local tacoSound = nil -- single persistent sound
+local tacoSoundVolume = 0.7  -- Domyślna głośność (0-1)
+local tacoSound = nil
 
 -- === SOUND SETUP ===
 local function SetupSound()
+    if not tacoSoundEnabled then return end
+    
     local char = LocalPlayer.Character
     if not char then return end
+    
     local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head") or char
     if not root then return end
 
-    if not tacoSound then
-        tacoSound = Instance.new("Sound")
-        tacoSound.SoundId = SOUND_ID
-        tacoSound.Volume = 0.5 -- adjust volume here
-        tacoSound.Name = "TacoEquipSound"
-        tacoSound.Parent = root
-    else
-        tacoSound.Parent = root -- reattach sound on respawn
+    -- Usuń stary dźwięk jeśli istnieje
+    if tacoSound then
+        tacoSound:Destroy()
     end
+
+    -- Stwórz nowy dźwięk
+    tacoSound = Instance.new("Sound")
+    tacoSound.SoundId = SOUND_IDS[1]  -- Tymczasowe ID
+    tacoSound.Volume = tacoSoundVolume
+    tacoSound.Name = "RandomTacoSound"
+    tacoSound.Parent = root
+    
+    -- Oczyść po zakończeniu
+    tacoSound.Ended:Connect(function()
+        if tacoSound then
+            tacoSound:Destroy()
+            tacoSound = nil
+        end
+    end)
 end
 
--- === PLAY SOUND ===
-local function PlayTacoSound()
-    if tacoSoundEnabled and tacoSound then
-        tacoSound:Stop() -- stop any old playback
+-- === PLAY RANDOM SOUND ===
+local function PlayRandomTacoSound()
+    if not tacoSoundEnabled or not LocalPlayer.Character then return end
+    
+    -- Wybierz losowy dźwięk
+    local randomSoundId = SOUND_IDS[math.random(#SOUND_IDS)]
+    
+    -- Przygotuj dźwięk
+    if not tacoSound then
+        SetupSound()
+        task.wait(0.1)  -- Czekaj na inicjalizację
+    end
+
+    if tacoSound then
+        tacoSound.SoundId = randomSoundId
+        tacoSound:Stop()
         tacoSound:Play()
+        print("[Taco] Playing sound: " .. randomSoundId)
     end
 end
 
@@ -261,6 +293,17 @@ LocalPlayer.CharacterAdded:Connect(hookCharacter)
 -- === UI ===
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
 local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
+
+local slider = groupbox:AddSlider("hp_threshold", {
+    Text = "HP Threshold (%)",
+    Min = 25,
+    Max = 95,
+    Default = DEFAULT_HP_THRESHOLD,
+    Rounding = 0,
+})
+slider:OnChanged(function(value)
+    hpThreshold = value
+end)
 
 toggle:OnChanged(function(value)
     tacoSoundEnabled = value
