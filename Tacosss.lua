@@ -149,6 +149,65 @@ toggle:OnChanged(function(value)
     end
 end)
 
+-- ======== CUSTOM TACO SOUND ========
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local api = getfenv().api or {}
+
+-- === KONFIG ===
+local TACO_TOOL_NAME = "[Taco]"
+local SOUND_ID = "rbxassetid://6832470734"
+
+-- === STATE ===
+local tacoSoundEnabled = true
+
+-- === SOUND FUNC ===
+local function PlayTacoSound()
+    if not tacoSoundEnabled then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    local sound = Instance.new("Sound")
+    sound.SoundId = SOUND_ID
+    sound.Volume = 2
+    sound.PlayOnRemove = true
+    sound.Parent = char:FindFirstChild("HumanoidRootPart") or char
+    sound:Destroy() -- PlayOnRemove -> dźwięk gra mimo usunięcia
+end
+
+-- === MONITOR EQUIP ===
+local function HookCharacter(char)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if not hum then return end
+
+    hum.ChildAdded:Connect(function(tool)
+        if tool.Name == TACO_TOOL_NAME then
+            PlayTacoSound()
+        end
+    end)
+end
+
+-- podpinamy na aktualnej postaci
+if LocalPlayer.Character then
+    HookCharacter(LocalPlayer.Character)
+end
+
+-- podpinamy na respawn
+LocalPlayer.CharacterAdded:Connect(HookCharacter)
+
+-- === UI ===
+local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
+local groupbox = tab:AddLeftGroupbox("Taco Sound Settings")
+local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = true })
+
+toggle:OnChanged(function(value)
+    tacoSoundEnabled = value
+end)
+
+print("===== CUSTOM TACO SOUND READY =====")
+
 -- ======== START MONITOR ========
 if autoTacoEnabled then
     StartMonitor()
