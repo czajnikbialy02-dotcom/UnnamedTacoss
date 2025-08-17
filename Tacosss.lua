@@ -72,14 +72,19 @@ local function AutoTaco()
         task.wait(0.1)
     until tacoTool or os.clock()-startTime > 3
 
-    if tacoTool and autoTacoEnabled then
+        if tacoTool and autoTacoEnabled then
         if tacoTool.Parent == LocalPlayer.Backpack then
             pcall(function() hum:EquipTool(tacoTool) end)
             task.wait(0.2)
         end
-        while tacoTool and tacoTool.Parent and autoTacoEnabled do
+        -- 🔥 fixed loop: only click while equipped
+        while tacoTool 
+        and tacoTool.Parent == char -- must be equipped
+        and autoTacoEnabled 
+        and isAlive do
             pcall(mouse1click)
             task.wait(0.07)
+            -- refresh tacoTool reference
             tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) or FindObject(char, TACO_TOOL_NAME, 0.1)
         end
     end
