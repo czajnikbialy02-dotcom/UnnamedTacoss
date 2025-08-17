@@ -343,7 +343,11 @@ leftGroupbox:AddLabel("Report bugs to kolkol via PV")
 
 -- Auto Taco Settings Groupbox
 local groupbox = tab:AddRightGroupbox("Auto Taco Settings")
-local toggle = groupbox:AddToggle("auto_taco", { Text = "Auto Taco :D", Default = false })
+local toggle = groupbox:AddToggle("auto_taco", { 
+    Text = "Auto Taco :D", 
+    Default = false 
+})
+
 toggle:OnChanged(function(value)
     autoTacoEnabled = value
     if value then
@@ -354,34 +358,36 @@ toggle:OnChanged(function(value)
 end)
 
 -- Taco Sound Toggle
-local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
+local toggle = groupbox:AddToggle("taco_sound", { 
+    Text = "Custom Taco Sound", 
+    Default = false 
+})
+
 toggle:OnChanged(function(value)
     tacoSoundEnabled = value
 end)
 
 -- Spin Bot Groupbox
 local spinGroupbox = tab:AddLeftGroupbox("Spin Bot")
-spinGroupbox:AddSlider("spin_speed", {
+local slider = spinGroupbox:AddSlider("spin_speed", {
     Text = "Spin Speed",
     Default = 25,
     Min = 1,
     Max = 50,
     Rounding = 0,
     Compact = false,
+    Callback = function(value)
+        spinSpeed = value
+    end
 })
-
-spinGroupbox:GetSlider("spin_speed"):OnChanged(function(value)
-    spinSpeed = value
-end)
 
 local spinToggle = spinGroupbox:AddToggle("spin_bot", {
     Text = "Spin Bot but weird",
     Default = false,
+    Callback = function(value)
+        ToggleSpinBot(value)
+    end
 })
-
-spinToggle:OnChanged(function(value)
-    ToggleSpinBot(value)
-end)
 
 -- ======== START MONITOR ========
 if autoTacoEnabled then
