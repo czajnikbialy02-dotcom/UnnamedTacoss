@@ -3,29 +3,20 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild('PlayerGui')
 local api = getfenv().api or {}
 
--- ======== KONFIGURACJA ========
+-- ======== TACO CONFIG ========
 local TACO_SHOP_NAME = '[Taco] - $2'
 local TACO_TOOL_NAME = '[Taco]'
 local DEFAULT_HP_THRESHOLD = 87
 local TACO_COST = 2
-local CLICK_DELAY = 0.07
-local SOUND_IDS = {
-    "rbxassetid://6832470734",
-    "rbxassetid://6830368128", 
-    "rbxassetid://85950680962526"
-}
 
--- ======== STANY ========
+-- ======== STATES ========
 local autoTacoEnabled = true
 local hpThreshold = DEFAULT_HP_THRESHOLD
 local isTacoRunning = false
 local isAlive = true
-local monitorTask = nil
-local tacoSoundEnabled = true
-local tacoSoundVolume = 0.6
-local shouldStopClicking = false -- Nowa zmienna do kontroli klikania
+local monitorTask = nil -- referencja do pętli
 
--- ======== POMOCNICZE ========
+-- ======== HELPERS ========
 local function FindObject(parent, name, timeout)
     timeout = timeout or 3
     local startTime = os.clock()
@@ -45,81 +36,41 @@ local function GetCurrentMoney()
     return tonumber(num) or 0
 end
 
--- ======== SYSTEM DŹWIĘKU ========
-local soundController = {
-    sound = nil,
-    lastEquipTime = 0,
-    
-    setup = function(self)
-        if not tacoSoundEnabled then return end
-        
-        local char = LocalPlayer.Character
-        if not char then return end
-        
-        local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
-        if not root then return end
-
-        self:cleanup()
-        
-        self.sound = Instance.new("Sound")
-        self.sound.Volume = tacoSoundVolume
-        self.sound.Name = "TacoSoundFX"
-        self.sound.Parent = root
-    end,
-    
-    cleanup = function(self)
-        if self.sound then
-            self.sound:Destroy()
-            self.sound = nil
-        end
-    end,
-    
-    playRandom = function(self)
-        if not tacoSoundEnabled or not LocalPlayer.Character then return end
-        
-        if os.clock() - self.lastEquipTime < 0.1 then return end
-        self.lastEquipTime = os.clock()
-        
-        if not self.sound then
-            self:setup()
-            task.wait(0.1)
-        end
-
-        if self.sound then
-            self.sound.SoundId = SOUND_IDS[math.random(#SOUND_IDS)]
-            self.sound:Stop()
-            self.sound:Play()
-        end
-    end
-}
-
--- ======== OBSŁUGA TACO ========
+-- ======== CHECK & GET TACO ========
 local function EnsureTaco()
     local char = LocalPlayer.Character
-    if not char or shouldStopClicking then return false end
+    if not char then return false end
 
     local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                      or FindObject(char, TACO_TOOL_NAME, 0.1)
-    if tacoTool then return true end
+    if tacoTool then return true end -- już mam
 
+    -- nie mam? teleportuj do sklepu
     local root = FindObject(char, "HumanoidRootPart", 2)
     local shop = FindObject(FindObject(workspace, "Ignored", 3), "Shop", 3)
     local tacoModel = shop and FindObject(shop, TACO_SHOP_NAME, 3)
     local click = tacoModel and FindObject(tacoModel, "ClickDetector", 2)
-    
-    if not root or not tacoModel or not click then return false end
-    if GetCurrentMoney() < TACO_COST then return false end
+    if not root or not tacoModel or not click then
+        warn("Taco shop not found!")
+        return false
+    end
+    if GetCurrentMoney() < TACO_COST then
+        warn("Not enough money for Taco!")
+        return false
+    end
 
     local originalCFrame = root.CFrame
     pcall(function() root.CFrame = tacoModel:GetPivot() * CFrame.new(0,0,-2) end)
     task.wait(0.2)
+
+    -- kup Taco
     pcall(fireclickdetector, click, 5)
     task.wait(0.2)
     pcall(function() root.CFrame = originalCFrame end)
 
+    -- poczekaj aż tool będzie w Backpack/Character
     local startTime = os.clock()
     repeat
-        if shouldStopClicking then return false end
         tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                    or FindObject(char, TACO_TOOL_NAME, 0.1)
         if tacoTool then return true end
@@ -131,33 +82,33 @@ end
 
 -- ======== AUTO TACO ========
 local function AutoTaco()
-    if not autoTacoEnabled or isTacoRunning or not isAlive or shouldStopClicking then return end
+    if not autoTacoEnabled or isTacoRunning or not isAlive then return end
     isTacoRunning = true
-    shouldStopClicking = false
 
     local char = LocalPlayer.Character
     local hum = FindObject(char, 'Humanoid', 2)
     local root = FindObject(char, 'HumanoidRootPart', 2)
-    if not (hum and root) then 
-        isTacoRunning = false
-        return 
-    end
+    if not (hum and root) then isTacoRunning = false return end
 
+    -- sprawdź i kup Taco jeśli trzeba
     if not EnsureTaco() then
         isTacoRunning = false
         return
     end
 
+    -- znajdź tool po zakupie
     local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                      or FindObject(char, TACO_TOOL_NAME, 0.1)
-    if tacoTool and tacoTool.Parent == LocalPlayer.Backpack then
+    if tacoTool.Parent == LocalPlayer.Backpack then
         pcall(function() hum:EquipTool(tacoTool) end)
         task.wait(0.2)
     end
 
-    while tacoTool and tacoTool.Parent == char and autoTacoEnabled and isAlive and not shouldStopClicking do
+    -- klikaj tylko jeśli jest w ręce
+    while tacoTool and tacoTool.Parent == char and autoTacoEnabled and isAlive do
         pcall(mouse1click)
-        task.wait(CLICK_DELAY)
+        task.wait(0.07)
+        -- odśwież referencję
         tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                    or FindObject(char, TACO_TOOL_NAME, 0.1)
     end
@@ -167,11 +118,11 @@ end
 
 -- ======== MONITOR ========
 local function StartMonitor()
-    if monitorTask then return end
+    if monitorTask then return end -- już działa
     monitorTask = task.spawn(function()
-        while autoTacoEnabled and not shouldStopClicking do
+        while autoTacoEnabled do
             task.wait(0.2)
-            if not isAlive or shouldStopClicking then
+            if not isAlive then
                 isTacoRunning = false
                 continue
             end
@@ -183,77 +134,44 @@ local function StartMonitor()
                 end
             end
         end
-        monitorTask = nil
+        monitorTask = nil -- zakończone
     end)
 end
 
 local function StopMonitor()
     autoTacoEnabled = false
-    shouldStopClicking = true
     if monitorTask then
+        -- monitor zakończy się sam w następnym ticku
         monitorTask = nil
     end
 end
 
--- ======== OBSŁUGA POSTACI ========
-local function HandleCharacter(char)
+-- ======== RESPAWN HANDLING ========
+LocalPlayer.CharacterAdded:Connect(function(character)
     isAlive = true
-    shouldStopClicking = false
-    
-    -- Podłącz istniejące narzędzia
-    for _, tool in ipairs(char:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name == TACO_TOOL_NAME then
-            tool.Equipped:Connect(function()
-                soundController:playRandom()
-            end)
-        end
-    end
-    
-    -- Podłącz nowe narzędzia
-    char.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") and child.Name == TACO_TOOL_NAME then
-            child.Equipped:Connect(function()
-                soundController:playRandom()
-            end)
-        end
-    end)
-
-    -- Podłącz narzędzia z plecaka
-    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name == TACO_TOOL_NAME then
-            tool.Equipped:Connect(function()
-                soundController:playRandom()
-            end)
-        end
-    end
-    
-    LocalPlayer.Backpack.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") and child.Name == TACO_TOOL_NAME then
-            child.Equipped:Connect(function()
-                soundController:playRandom()
-            end)
-        end
-    end)
-
-    local humanoid = char:WaitForChild('Humanoid')
-    humanoid.Died:Connect(function()
+    character:WaitForChild('Humanoid').Died:Connect(function()
         isAlive = false
         isTacoRunning = false
-        shouldStopClicking = true
     end)
+end)
+
+if LocalPlayer.Character then
+    local hum = LocalPlayer.Character:FindFirstChild('Humanoid')
+    if hum then
+        isAlive = hum.Health > 0
+        hum.Died:Connect(function()
+            isAlive = false
+            isTacoRunning = false
+        end)
+    end
 end
 
 -- ======== UI ========
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
 local groupbox = tab:AddLeftGroupbox("Auto Taco Settings")
-
-local toggle = groupbox:AddToggle("auto_taco", { 
-    Text = "Auto Taco", 
-    Default = autoTacoEnabled 
-})
+local toggle = groupbox:AddToggle("auto_taco", { Text = "Auto Taco :D", Default = false })
 toggle:OnChanged(function(value)
     autoTacoEnabled = value
-    shouldStopClicking = not value
     if value then
         StartMonitor()
     else
@@ -261,32 +179,100 @@ toggle:OnChanged(function(value)
     end
 end)
 
-groupbox:AddSlider("hp_threshold", {
-    Text = "HP Threshold (%)",
-    Min = 25,
-    Max = 95,
-    Default = DEFAULT_HP_THRESHOLD,
-    Rounding = 0,
-}):OnChanged(function(value)
-    hpThreshold = value
-end)
+-- ======== CUSTOM TACO SOUND ========
+-- i like taco
+-- === CONFIG ===
+local TACO_TOOL_NAME = "[Taco]"
+local SOUND_ID = "rbxassetid://6832470734"
 
-groupbox:AddToggle("taco_sound", { 
-    Text = "Enable Taco Sounds", 
-    Default = tacoSoundEnabled 
-}):OnChanged(function(value)
+-- === STATE ===
+local tacoSoundEnabled = true
+local tacoSound = nil -- single persistent sound
+
+-- === SOUND SETUP ===
+local function SetupSound()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head") or char
+    if not root then return end
+
+    if not tacoSound then
+        tacoSound = Instance.new("Sound")
+        tacoSound.SoundId = SOUND_ID
+        tacoSound.Volume = 0.5 -- adjust volume here
+        tacoSound.Name = "TacoEquipSound"
+        tacoSound.Parent = root
+    else
+        tacoSound.Parent = root -- reattach sound on respawn
+    end
+end
+
+-- === PLAY SOUND ===
+local function PlayTacoSound()
+    if tacoSoundEnabled and tacoSound then
+        tacoSound:Stop() -- stop any old playback
+        tacoSound:Play()
+    end
+end
+
+-- === HOOK TOOL ===
+local function hookTool(tool)
+    if tool.Name ~= TACO_TOOL_NAME then return end
+    print("[DEBUG] Hooked tool:", tool.Name)
+
+    tool.Equipped:Connect(function()
+        print("[DEBUG] Taco Equipped Detected")
+        PlayTacoSound()
+    end)
+end
+
+-- === HOOK CHARACTER ===
+local function hookCharacter(char)
+    print("[DEBUG] New character loaded")
+    SetupSound()
+
+    -- hook existing tools
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        hookTool(tool)
+    end
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            hookTool(tool)
+        end
+    end
+
+    -- hook future tools
+    LocalPlayer.Backpack.ChildAdded:Connect(hookTool)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            hookTool(child)
+        end
+    end)
+end
+
+-- hook current character
+if LocalPlayer.Character then
+    hookCharacter(LocalPlayer.Character)
+end
+
+-- hook respawns
+LocalPlayer.CharacterAdded:Connect(hookCharacter)
+
+-- === UI ===
+local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
+local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
+
+toggle:OnChanged(function(value)
     tacoSoundEnabled = value
 end)
 
--- ======== INICJALIZACJA ========
-LocalPlayer.CharacterAdded:Connect(function(char)
-    HandleCharacter(char)
-end)
+print("===== CUSTOM TACO SOUND READY =====")
 
-if LocalPlayer.Character then
-    HandleCharacter(LocalPlayer.Character)
-end
 
+
+-- ======== START MONITOR ========
 if autoTacoEnabled then
     StartMonitor()
 end
+
+print("===== AUTO TACO SYSTEM READY =====")
