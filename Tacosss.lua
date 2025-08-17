@@ -166,27 +166,35 @@ local function PlayTacoSound()
     if not tacoSoundEnabled then return end
     local char = LocalPlayer.Character
     if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
+    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head") or char
+    if not root then return end
 
     local sound = Instance.new("Sound")
     sound.SoundId = SOUND_ID
     sound.Volume = 2
     sound.PlayOnRemove = true
-    sound.Parent = char:FindFirstChild("HumanoidRootPart") or char
-    sound:Destroy() -- PlayOnRemove -> dźwięk gra mimo usunięcia
+    sound.Parent = root
+    sound:Destroy() -- PlayOnRemove powoduje odpalenie dźwięku przy usunięciu
 end
 
--- === MONITOR EQUIP ===
+-- === HOOK TOOLS ===
 local function HookCharacter(char)
-    local hum = char:WaitForChild("Humanoid", 5)
-    if not hum then return end
-
-    hum.ChildAdded:Connect(function(tool)
+    -- nasłuch na toole w Backpacku
+    local function connectTool(tool)
         if tool.Name == TACO_TOOL_NAME then
-            PlayTacoSound()
+            tool.Equipped:Connect(function()
+                PlayTacoSound()
+            end)
         end
-    end)
+    end
+
+    -- podpinamy pod wszystkie obecne toolsy
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        connectTool(tool)
+    end
+
+    -- podpinamy na przyszłe toolsy
+    LocalPlayer.Backpack.ChildAdded:Connect(connectTool)
 end
 
 -- podpinamy na aktualnej postaci
@@ -207,6 +215,7 @@ toggle:OnChanged(function(value)
 end)
 
 print("===== CUSTOM TACO SOUND READY =====")
+
 
 -- ======== START MONITOR ========
 if autoTacoEnabled then
