@@ -230,7 +230,6 @@ LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
 -- === UI ===
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
-local groupbox = tab:AddLeftGroupbox("Taco Sound Settings")
 local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = true })
 
 toggle:OnChanged(function(value)
