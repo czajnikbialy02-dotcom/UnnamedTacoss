@@ -1,6 +1,8 @@
 local Players = game:GetService('Players')
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild('PlayerGui')
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local api = getfenv().api or {}
 
 -- ======== TACO CONFIG ========
@@ -15,6 +17,9 @@ local hpThreshold = DEFAULT_HP_THRESHOLD
 local isTacoRunning = false
 local isAlive = true
 local monitorTask = nil -- referencja do pętli
+local spinBotEnabled = false
+local spinSpeed = 25
+local spinBotConnection = nil
 
 -- ======== HELPERS ========
 local function FindObject(parent, name, timeout)
@@ -34,6 +39,38 @@ local function GetCurrentMoney()
     if not moneyText or not moneyText:IsA('TextLabel') then return 0 end
     local num = string.gsub(moneyText.Text, '[^%d]', '')
     return tonumber(num) or 0
+end
+
+-- ======== TELEPORT FUNCTION ========
+function api:teleport(cframe: CFrame): nil
+    -- teleports the localplayer or current vehicle to the cframe that you passed in
+    -- this should be used instead of manually teleporting, this method yields.
+    
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local root = FindObject(char, "HumanoidRootPart", 2)
+    if not root then return end
+    
+    -- Check if player is in a vehicle
+    local vehicleSeat = FindObject(char, "Seat", 0.5)
+    if vehicleSeat then
+        -- Teleport vehicle
+        local vehicle = vehicleSeat:FindFirstAncestorOfClass("Model")
+        if vehicle then
+            local vehiclePrimaryPart = vehicle.PrimaryPart
+            if vehiclePrimaryPart then
+                local offset = vehiclePrimaryPart.CFrame:ToObjectSpace(root.CFrame)
+                vehiclePrimaryPart.CFrame = cframe * offset:Inverse()
+                task.wait(0.1) -- Small yield to ensure physics updates
+                return
+            end
+        end
+    end
+    
+    -- Regular character teleport
+    root.CFrame = cframe
+    task.wait(0.1) -- Small yield to ensure physics updates
 end
 
 -- ======== CHECK & GET TACO ========
@@ -60,13 +97,13 @@ local function EnsureTaco()
     end
 
     local originalCFrame = root.CFrame
-    pcall(function() root.CFrame = tacoModel:GetPivot() * CFrame.new(0,0,-2) end)
+    api:teleport(tacoModel:GetPivot() * CFrame.new(0,0,-2))
     task.wait(0.2)
 
     -- kup Taco
     pcall(fireclickdetector, click, 5)
     task.wait(0.2)
-    pcall(function() root.CFrame = originalCFrame end)
+    api:teleport(originalCFrame)
 
     -- poczekaj aż tool będzie w Backpack/Character
     local startTime = os.clock()
@@ -146,6 +183,49 @@ local function StopMonitor()
     end
 end
 
+-- ======== SPIN BOT ========
+local function UpdateSpinBot()
+    if not spinBotEnabled then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return end
+    
+    -- Random rotation for weird effect
+    local randomX = math.random(-180, 180)
+    local randomY = math.random(-180, 180)
+    local randomZ = math.random(-180, 180)
+    
+    -- Calculate rotation based on speed and random factors
+    local deltaTime = RunService.Heartbeat:Wait()
+    local rotation = CFrame.fromEulerAnglesXYZ(
+        math.rad(randomX * spinSpeed * deltaTime),
+        math.rad(randomY * spinSpeed * deltaTime),
+        math.rad(randomZ * spinSpeed * deltaTime)
+    )
+    
+    -- Apply rotation ignoring shift lock
+    humanoidRootPart.CFrame = humanoidRootPart.CFrame * rotation
+end
+
+local function ToggleSpinBot(state)
+    spinBotEnabled = state
+    
+    if spinBotEnabled then
+        if spinBotConnection then
+            spinBotConnection:Disconnect()
+        end
+        spinBotConnection = RunService.Heartbeat:Connect(UpdateSpinBot)
+    else
+        if spinBotConnection then
+            spinBotConnection:Disconnect()
+            spinBotConnection = nil
+        end
+    end
+end
+
 -- ======== RESPAWN HANDLING ========
 LocalPlayer.CharacterAdded:Connect(function(character)
     isAlive = true
@@ -153,6 +233,11 @@ LocalPlayer.CharacterAdded:Connect(function(character)
         isAlive = false
         isTacoRunning = false
     end)
+    
+    -- Re-enable spin bot if it was on
+    if spinBotEnabled then
+        ToggleSpinBot(true)
+    end
 end)
 
 if LocalPlayer.Character then
@@ -166,21 +251,7 @@ if LocalPlayer.Character then
     end
 end
 
--- ======== UI ========
-local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
-local groupbox = tab:AddLeftGroupbox("Auto Taco Settings")
-local toggle = groupbox:AddToggle("auto_taco", { Text = "Auto Taco :D", Default = false })
-toggle:OnChanged(function(value)
-    autoTacoEnabled = value
-    if value then
-        StartMonitor()
-    else
-        StopMonitor()
-    end
-end)
-
 -- ======== CUSTOM TACO SOUND ========
--- i like taco
 -- === CONFIG ===
 local TACO_TOOL_NAME = "[Taco]"
 local SOUND_ID = "rbxassetid://6832470734"
@@ -258,17 +329,59 @@ end
 -- hook respawns
 LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
--- === UI ===
+-- ======== UI ========
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
-local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
 
+-- Left Groupbox with changelog and author
+local leftGroupbox = tab:AddLeftGroupbox("Info")
+leftGroupbox:AddLabel("Author: kolkol")
+leftGroupbox:AddLabel("Changelog:")
+leftGroupbox:AddLabel("- Added new teleport function")
+leftGroupbox:AddLabel("- Added spin bot feature")
+leftGroupbox:AddLabel("- Improved UI organization")
+leftGroupbox:AddLabel("Report bugs to kolkol via PV")
+
+-- Auto Taco Settings Groupbox
+local groupbox = tab:AddRightGroupbox("Auto Taco Settings")
+local toggle = groupbox:AddToggle("auto_taco", { Text = "Auto Taco :D", Default = false })
+toggle:OnChanged(function(value)
+    autoTacoEnabled = value
+    if value then
+        StartMonitor()
+    else
+        StopMonitor()
+    end
+end)
+
+-- Taco Sound Toggle
+local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
 toggle:OnChanged(function(value)
     tacoSoundEnabled = value
 end)
 
-print("===== CUSTOM TACO SOUND READY =====")
+-- Spin Bot Groupbox
+local spinGroupbox = tab:AddLeftGroupbox("Spin Bot")
+spinGroupbox:AddSlider("spin_speed", {
+    Text = "Spin Speed",
+    Default = 25,
+    Min = 1,
+    Max = 50,
+    Rounding = 0,
+    Compact = false,
+})
 
+spinGroupbox:GetSlider("spin_speed"):OnChanged(function(value)
+    spinSpeed = value
+end)
 
+local spinToggle = spinGroupbox:AddToggle("spin_bot", {
+    Text = "Spin Bot but weird",
+    Default = false,
+})
+
+spinToggle:OnChanged(function(value)
+    ToggleSpinBot(value)
+end)
 
 -- ======== START MONITOR ========
 if autoTacoEnabled then
@@ -276,3 +389,5 @@ if autoTacoEnabled then
 end
 
 print("===== AUTO TACO SYSTEM READY =====")
+print("===== SPIN BOT SYSTEM READY =====")
+print("===== CUSTOM TACO SOUND READY =====")
