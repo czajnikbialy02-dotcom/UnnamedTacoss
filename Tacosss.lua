@@ -12,7 +12,6 @@ local CLICK_DELAY = 0.07
 local SOUND_IDS = {
     "rbxassetid://6832470734",
     "rbxassetid://6830368128", 
-    "rbxassetid://8091102464",
     "rbxassetid://85950680962526"
 }
 
