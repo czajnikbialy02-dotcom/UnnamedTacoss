@@ -166,33 +166,18 @@ if LocalPlayer.Character then
     end
 end
 
--- ======== UI ========
-local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
-local groupbox = tab:AddLeftGroupbox("Auto Taco Settings")
-local toggle = groupbox:AddToggle("auto_taco", { Text = "Auto Taco :D", Default = false })
-toggle:OnChanged(function(value)
-    autoTacoEnabled = value
-    if value then
-        StartMonitor()
-    else
-        StopMonitor()
-    end
-end)
-
--- ======== CUSTOM TACO SOUND ========
 -- ======== TACO SOUND SYSTEM ========
-local TACO_TOOL_NAME = "[Taco]"
 local SOUND_IDS = {
     "rbxassetid://6832470734",  -- Dźwięk 1
-    "rbxassetid://85950680962526",   -- Dźwięk 2 (przykład)
+    "rbxassetid://8595068096",   -- Dźwięk 2
     "rbxassetid://6830368128",   -- Dźwięk 3
     "rbxassetid://8091102464",   -- Dźwięk 4
-    "rbxassetid://85950680962526"    -- Dźwięk 5
+    "rbxassetid://8595068096"    -- Dźwięk 5
 }
 
 -- === STATE ===
 local tacoSoundEnabled = true
-local tacoSoundVolume = 0.7  -- Domyślna głośność (0-1)
+local tacoSoundVolume = 0.7
 local tacoSound = nil
 
 -- === SOUND SETUP ===
@@ -208,6 +193,7 @@ local function SetupSound()
     -- Usuń stary dźwięk jeśli istnieje
     if tacoSound then
         tacoSound:Destroy()
+        tacoSound = nil
     end
 
     -- Stwórz nowy dźwięk
@@ -216,14 +202,6 @@ local function SetupSound()
     tacoSound.Volume = tacoSoundVolume
     tacoSound.Name = "RandomTacoSound"
     tacoSound.Parent = root
-    
-    -- Oczyść po zakończeniu
-    tacoSound.Ended:Connect(function()
-        if tacoSound then
-            tacoSound:Destroy()
-            tacoSound = nil
-        end
-    end)
 end
 
 -- === PLAY RANDOM SOUND ===
@@ -236,64 +214,80 @@ local function PlayRandomTacoSound()
     -- Przygotuj dźwięk
     if not tacoSound then
         SetupSound()
-        task.wait(0.1)  -- Czekaj na inicjalizację
+        task.wait(0.1)
     end
 
     if tacoSound then
         tacoSound.SoundId = randomSoundId
         tacoSound:Stop()
         tacoSound:Play()
-        print("[Taco] Playing sound: " .. randomSoundId)
     end
 end
 
--- === HOOK TOOL ===
-local function hookTool(tool)
+-- === HOOK TOOL EVENTS ===
+local function HookTool(tool)
     if tool.Name ~= TACO_TOOL_NAME then return end
-    print("[DEBUG] Hooked tool:", tool.Name)
-
+    
     tool.Equipped:Connect(function()
-        print("[DEBUG] Taco Equipped Detected")
-        PlayTacoSound()
+        PlayRandomTacoSound()
     end)
 end
 
--- === HOOK CHARACTER ===
-local function hookCharacter(char)
-    print("[DEBUG] New character loaded")
-    SetupSound()
-
-    -- hook existing tools
-    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
-        hookTool(tool)
-    end
+-- === CHARACTER HANDLING ===
+local function HandleCharacter(char)
+    -- Podłącz istniejące narzędzia
     for _, tool in ipairs(char:GetChildren()) do
         if tool:IsA("Tool") then
-            hookTool(tool)
+            HookTool(tool)
         end
     end
-
-    -- hook future tools
-    LocalPlayer.Backpack.ChildAdded:Connect(hookTool)
+    
+    -- Podłącz nowe narzędzia
     char.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then
-            hookTool(child)
+            HookTool(child)
+        end
+    end)
+
+    -- Podłącz narzędzia z plecaka
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            HookTool(tool)
+        end
+    end
+    
+    LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            HookTool(child)
         end
     end)
 end
 
--- hook current character
+-- === INITIAL SETUP ===
+LocalPlayer.CharacterAdded:Connect(HandleCharacter)
 if LocalPlayer.Character then
-    hookCharacter(LocalPlayer.Character)
+    HandleCharacter(LocalPlayer.Character)
 end
 
--- hook respawns
-LocalPlayer.CharacterAdded:Connect(hookCharacter)
-
--- === UI ===
+-- ======== UI ========
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
-local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
+local groupbox = tab:AddLeftGroupbox("Auto Taco Settings")
 
+-- Główny toggle
+local toggle = groupbox:AddToggle("auto_taco", { 
+    Text = "Auto Taco :D", 
+    Default = autoTacoEnabled 
+})
+toggle:OnChanged(function(value)
+    autoTacoEnabled = value
+    if value then
+        StartMonitor()
+    else
+        StopMonitor()
+    end
+end)
+
+-- Suwak progu HP
 local slider = groupbox:AddSlider("hp_threshold", {
     Text = "HP Threshold (%)",
     Min = 25,
@@ -305,13 +299,29 @@ slider:OnChanged(function(value)
     hpThreshold = value
 end)
 
-toggle:OnChanged(function(value)
+-- Ustawienia dźwięku
+local soundToggle = groupbox:AddToggle("taco_sound", { 
+    Text = "Enable Taco Sounds", 
+    Default = tacoSoundEnabled 
+})
+soundToggle:OnChanged(function(value)
     tacoSoundEnabled = value
 end)
 
-print("===== CUSTOM TACO SOUND READY =====")
-
-
+local volumeSlider = groupbox:AddSlider("sound_volume", {
+    Text = "Sound Volume",
+    Min = 0,
+    Max = 1,
+    Default = tacoSoundVolume,
+    Rounding = 1,
+    Compact = true
+})
+volumeSlider:OnChanged(function(value)
+    tacoSoundVolume = value
+    if tacoSound then
+        tacoSound.Volume = value
+    end
+end)
 
 -- ======== START MONITOR ========
 if autoTacoEnabled then
