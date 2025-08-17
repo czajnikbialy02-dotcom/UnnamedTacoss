@@ -1,11 +1,9 @@
 local Players = game:GetService('Players')
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild('PlayerGui')
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local api = getfenv().api or {}
 
--- ======== CONFIGURATION ========
+-- ======== TACO CONFIG ========
 local TACO_SHOP_NAME = '[Taco] - $2'
 local TACO_TOOL_NAME = '[Taco]'
 local DEFAULT_HP_THRESHOLD = 87
@@ -16,11 +14,7 @@ local autoTacoEnabled = true
 local hpThreshold = DEFAULT_HP_THRESHOLD
 local isTacoRunning = false
 local isAlive = true
-local monitorTask = nil
-local spinBotEnabled = false
-local spinSpeed = 25
-local spinBotConnection = nil
-local originalOrientation = nil
+local monitorTask = nil -- referencja do pętli
 
 -- ======== HELPERS ========
 local function FindObject(parent, name, timeout)
@@ -42,127 +36,16 @@ local function GetCurrentMoney()
     return tonumber(num) or 0
 end
 
--- ======== IMPROVED TELEPORT FUNCTION ========
-function api:teleport(cframe: CFrame): nil
-    local char = LocalPlayer.Character
-    if not char then return end
-    
-    local root = FindObject(char, "HumanoidRootPart", 2)
-    if not root then return end
-    
-    -- Save current velocity to prevent flinging
-    local currentVelocity = root.Velocity
-    local currentRotVelocity = if root:FindFirstChild("RootAngularVelocity") then root.RootAngularVelocity.AngularVelocity else Vector3.new()
-    
-    -- Check if player is in a vehicle
-    local vehicleSeat = FindObject(char, "Seat", 0.5)
-    if vehicleSeat then
-        local vehicle = vehicleSeat:FindFirstAncestorOfClass("Model")
-        if vehicle then
-            local vehiclePrimaryPart = vehicle.PrimaryPart
-            if vehiclePrimaryPart then
-                local offset = vehiclePrimaryPart.CFrame:ToObjectSpace(root.CFrame)
-                vehiclePrimaryPart.CFrame = cframe * offset:Inverse()
-                task.wait(0.1)
-                return
-            end
-        end
-    end
-    
-    -- Regular character teleport with velocity preservation
-    root.CFrame = cframe
-    root.Velocity = currentVelocity
-    if root:FindFirstChild("RootAngularVelocity") then
-        root.RootAngularVelocity.AngularVelocity = currentRotVelocity
-    end
-    
-    task.wait(0.1)
-end
-
--- ======== SMOOTH SPIN BOT ========
-local function UpdateSpinBot()
-    if not spinBotEnabled then return end
-    
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoid or not humanoidRootPart then return end
-    
-    -- Save original orientation when first enabled
-    if not originalOrientation then
-        originalOrientation = humanoidRootPart.Orientation
-    end
-    
-    -- Calculate smooth rotation
-    local deltaTime = RunService.Heartbeat:Wait()
-    local rotationAmount = spinSpeed * deltaTime * 10
-    
-    -- Apply rotation only to the Y axis (horizontal) for smooth spinning
-    humanoidRootPart.CFrame = humanoidRootPart.CFrame * CFrame.Angles(0, math.rad(rotationAmount), 0)
-    
-    -- Keep upright orientation to prevent flinging
-    humanoidRootPart.Orientation = Vector3.new(
-        originalOrientation.X,
-        humanoidRootPart.Orientation.Y,
-        originalOrientation.Z
-    )
-    
-    -- Maintain humanoid state for proper movement
-    humanoid.AutoRotate = false
-end
-
-local function ToggleSpinBot(state)
-    spinBotEnabled = state
-    
-    if spinBotEnabled then
-        -- Initialize spin bot
-        local character = LocalPlayer.Character
-        if character then
-            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-            if humanoidRootPart then
-                originalOrientation = humanoidRootPart.Orientation
-            end
-        end
-        
-        if spinBotConnection then
-            spinBotConnection:Disconnect()
-        end
-        spinBotConnection = RunService.Heartbeat:Connect(UpdateSpinBot)
-    else
-        -- Clean up spin bot
-        if spinBotConnection then
-            spinBotConnection:Disconnect()
-            spinBotConnection = nil
-        end
-        
-        -- Reset character orientation
-        local character = LocalPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-            if humanoid and humanoidRootPart then
-                humanoid.AutoRotate = true
-                if originalOrientation then
-                    humanoidRootPart.Orientation = originalOrientation
-                end
-            end
-        end
-        originalOrientation = nil
-    end
-end
-
--- ======== AUTO TACO SYSTEM ========
+-- ======== CHECK & GET TACO ========
 local function EnsureTaco()
     local char = LocalPlayer.Character
     if not char then return false end
 
     local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                      or FindObject(char, TACO_TOOL_NAME, 0.1)
-    if tacoTool then return true end
+    if tacoTool then return true end -- już mam
 
-    -- Teleport to taco shop using new teleport function
+    -- nie mam? teleportuj do sklepu
     local root = FindObject(char, "HumanoidRootPart", 2)
     local shop = FindObject(FindObject(workspace, "Ignored", 3), "Shop", 3)
     local tacoModel = shop and FindObject(shop, TACO_SHOP_NAME, 3)
@@ -177,15 +60,15 @@ local function EnsureTaco()
     end
 
     local originalCFrame = root.CFrame
-    api:teleport(tacoModel:GetPivot() * CFrame.new(0,0,-2))
+    pcall(function() root.CFrame = tacoModel:GetPivot() * CFrame.new(0,0,-2) end)
     task.wait(0.2)
 
-    -- Buy Taco
+    -- kup Taco
     pcall(fireclickdetector, click, 5)
     task.wait(0.2)
-    api:teleport(originalCFrame)
+    pcall(function() root.CFrame = originalCFrame end)
 
-    -- Wait for tool
+    -- poczekaj aż tool będzie w Backpack/Character
     local startTime = os.clock()
     repeat
         tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
@@ -197,6 +80,7 @@ local function EnsureTaco()
     return false
 end
 
+-- ======== AUTO TACO ========
 local function AutoTaco()
     if not autoTacoEnabled or isTacoRunning or not isAlive then return end
     isTacoRunning = true
@@ -206,13 +90,13 @@ local function AutoTaco()
     local root = FindObject(char, 'HumanoidRootPart', 2)
     if not (hum and root) then isTacoRunning = false return end
 
-    -- Check and buy Taco if needed
+    -- sprawdź i kup Taco jeśli trzeba
     if not EnsureTaco() then
         isTacoRunning = false
         return
     end
 
-    -- Find tool after purchase
+    -- znajdź tool po zakupie
     local tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                      or FindObject(char, TACO_TOOL_NAME, 0.1)
     if tacoTool.Parent == LocalPlayer.Backpack then
@@ -220,11 +104,11 @@ local function AutoTaco()
         task.wait(0.2)
     end
 
-    -- Click only if tool is equipped
+    -- klikaj tylko jeśli jest w ręce
     while tacoTool and tacoTool.Parent == char and autoTacoEnabled and isAlive do
         pcall(mouse1click)
         task.wait(0.07)
-        -- Refresh reference
+        -- odśwież referencję
         tacoTool = FindObject(LocalPlayer.Backpack, TACO_TOOL_NAME, 0.1) 
                    or FindObject(char, TACO_TOOL_NAME, 0.1)
     end
@@ -232,8 +116,9 @@ local function AutoTaco()
     isTacoRunning = false
 end
 
+-- ======== MONITOR ========
 local function StartMonitor()
-    if monitorTask then return end
+    if monitorTask then return end -- już działa
     monitorTask = task.spawn(function()
         while autoTacoEnabled do
             task.wait(0.2)
@@ -249,13 +134,14 @@ local function StartMonitor()
                 end
             end
         end
-        monitorTask = nil
+        monitorTask = nil -- zakończone
     end)
 end
 
 local function StopMonitor()
     autoTacoEnabled = false
     if monitorTask then
+        -- monitor zakończy się sam w następnym ticku
         monitorTask = nil
     end
 end
@@ -267,11 +153,6 @@ LocalPlayer.CharacterAdded:Connect(function(character)
         isAlive = false
         isTacoRunning = false
     end)
-    
-    -- Re-enable spin bot if it was on
-    if spinBotEnabled then
-        ToggleSpinBot(true)
-    end
 end)
 
 if LocalPlayer.Character then
@@ -285,11 +166,30 @@ if LocalPlayer.Character then
     end
 end
 
--- ======== CUSTOM TACO SOUND ========
-local TACO_SOUND_ID = "rbxassetid://6832470734"
-local tacoSoundEnabled = true
-local tacoSound = nil
+-- ======== UI ========
+local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
+local groupbox = tab:AddLeftGroupbox("Auto Taco Settings")
+local toggle = groupbox:AddToggle("auto_taco", { Text = "Auto Taco :D", Default = false })
+toggle:OnChanged(function(value)
+    autoTacoEnabled = value
+    if value then
+        StartMonitor()
+    else
+        StopMonitor()
+    end
+end)
 
+-- ======== CUSTOM TACO SOUND ========
+-- i like taco
+-- === CONFIG ===
+local TACO_TOOL_NAME = "[Taco]"
+local SOUND_ID = "rbxassetid://6832470734"
+
+-- === STATE ===
+local tacoSoundEnabled = true
+local tacoSound = nil -- single persistent sound
+
+-- === SOUND SETUP ===
 local function SetupSound()
     local char = LocalPlayer.Character
     if not char then return end
@@ -298,31 +198,40 @@ local function SetupSound()
 
     if not tacoSound then
         tacoSound = Instance.new("Sound")
-        tacoSound.SoundId = TACO_SOUND_ID
-        tacoSound.Volume = 0.5
+        tacoSound.SoundId = SOUND_ID
+        tacoSound.Volume = 0.5 -- adjust volume here
         tacoSound.Name = "TacoEquipSound"
         tacoSound.Parent = root
     else
-        tacoSound.Parent = root
+        tacoSound.Parent = root -- reattach sound on respawn
     end
 end
 
+-- === PLAY SOUND ===
 local function PlayTacoSound()
     if tacoSoundEnabled and tacoSound then
-        tacoSound:Stop()
+        tacoSound:Stop() -- stop any old playback
         tacoSound:Play()
     end
 end
 
+-- === HOOK TOOL ===
 local function hookTool(tool)
     if tool.Name ~= TACO_TOOL_NAME then return end
+    print("[DEBUG] Hooked tool:", tool.Name)
+
     tool.Equipped:Connect(function()
+        print("[DEBUG] Taco Equipped Detected")
         PlayTacoSound()
     end)
 end
 
+-- === HOOK CHARACTER ===
 local function hookCharacter(char)
+    print("[DEBUG] New character loaded")
     SetupSound()
+
+    -- hook existing tools
     for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
         hookTool(tool)
     end
@@ -331,6 +240,8 @@ local function hookCharacter(char)
             hookTool(tool)
         end
     end
+
+    -- hook future tools
     LocalPlayer.Backpack.ChildAdded:Connect(hookTool)
     char.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then
@@ -339,73 +250,29 @@ local function hookCharacter(char)
     end)
 end
 
+-- hook current character
 if LocalPlayer.Character then
     hookCharacter(LocalPlayer.Character)
 end
+
+-- hook respawns
 LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
--- ======== UI ========
+-- === UI ===
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
+local toggle = groupbox:AddToggle("taco_sound", { Text = "Custom Taco Sound", Default = false })
 
--- Left Groupbox with info
-local leftGroupbox = tab:AddLeftGroupbox("Info")
-leftGroupbox:AddLabel("Author: kolkol")
-leftGroupbox:AddLabel("Changelog:")
-leftGroupbox:AddLabel("- Smooth spin bot")
-leftGroupbox:AddLabel("- Improved teleport system")
-leftGroupbox:AddLabel("- Bug fixes")
-leftGroupbox:AddLabel("Report bugs to kolkol via PV")
+toggle:OnChanged(function(value)
+    tacoSoundEnabled = value
+end)
 
--- Auto Taco Settings
-local groupbox = tab:AddRightGroupbox("Auto Taco Settings")
-groupbox:AddToggle("auto_taco", { 
-    Text = "Auto Taco :D", 
-    Default = false,
-    Callback = function(value)
-        autoTacoEnabled = value
-        if value then
-            StartMonitor()
-        else
-            StopMonitor()
-        end
-    end
-})
+print("===== CUSTOM TACO SOUND READY =====")
 
-groupbox:AddToggle("taco_sound", { 
-    Text = "Custom Taco Sound", 
-    Default = false,
-    Callback = function(value)
-        tacoSoundEnabled = value
-    end
-})
 
--- Spin Bot Settings
-local spinGroupbox = tab:AddLeftGroupbox("Spin Bot")
-spinGroupbox:AddSlider("spin_speed", {
-    Text = "Spin Speed",
-    Default = 25,
-    Min = 1,
-    Max = 50,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(value)
-        spinSpeed = value
-    end
-})
 
-spinGroupbox:AddToggle("spin_bot", {
-    Text = "Spin Bot (Smooth)",
-    Default = false,
-    Callback = function(value)
-        ToggleSpinBot(value)
-    end
-})
-
--- Initialize systems
+-- ======== START MONITOR ========
 if autoTacoEnabled then
     StartMonitor()
 end
 
-print("===== IMPROVED AUTO TACO SYSTEM READY =====")
-print("===== SMOOTH SPIN BOT READY =====")
-print("===== CUSTOM TACO SOUND READY =====")
+print("===== AUTO TACO SYSTEM READY =====")
