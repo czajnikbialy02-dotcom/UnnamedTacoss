@@ -276,3 +276,285 @@ if autoTacoEnabled then
 end
 
 print("===== AUTO TACO SYSTEM READY =====")
+
+--// Services
+local Players = game:GetService('Players')
+local TweenService = game:GetService('TweenService')
+local Workspace = game:GetService('Workspace')
+
+local LocalPlayer = Players.LocalPlayer
+local Character
+local Humanoid
+local RootPart
+local Backpack = LocalPlayer:WaitForChild('Backpack')
+
+local CashiersFolder = Workspace:WaitForChild('Cashiers')
+local MoneyDropsFolder = Workspace:WaitForChild('Ignored'):WaitForChild('Drop')
+
+--// Config
+local COOLDOWN_TIME = 180
+local MIN_HEALTH = 30
+local UNDER_CASHIER_Y = 0 -- trzymanie na nogach
+local COLLECT_RANGE = 25
+local ATTACK_DISTANCE = 5
+local CASHIER_ATTACK_TIMEOUT = 12
+local TWEEN_SPEED = 120
+
+local Cooldowns = {}
+local BlacklistedCashiers = {}
+local Running = false
+
+--// GUI
+local ScreenGui = Instance.new('ScreenGui', LocalPlayer:WaitForChild('PlayerGui'))
+ScreenGui.ResetOnSpawn = false
+
+local Title = Instance.new('TextLabel', ScreenGui)
+Title.Size = UDim2.new(0, 300, 0, 30)
+Title.Position = UDim2.new(0, 20, 0, 20)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Title.TextColor3 = Color3.fromRGB(255, 255, 0)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 20
+Title.Text = 'kolkol DH autofarm'
+
+local StatusLabel = Instance.new('TextLabel', ScreenGui)
+StatusLabel.Size = UDim2.new(0, 300, 0, 30)
+StatusLabel.Position = UDim2.new(0, 20, 0, 55)
+StatusLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+StatusLabel.Font = Enum.Font.Code
+StatusLabel.TextSize = 18
+StatusLabel.Text = '[OFF]'
+
+local function SetStatus(msg, good)
+    if Running then
+        StatusLabel.Text = msg
+        StatusLabel.TextColor3 = good and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        print('[STATUS] ' .. msg)
+    end
+end
+
+--// Helpers
+local function UpdateReferences()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    Humanoid = Character:WaitForChild('Humanoid')
+    RootPart = Character:WaitForChild('HumanoidRootPart')
+    Backpack = LocalPlayer:WaitForChild('Backpack')
+    SetStatus('References updated', true)
+end
+
+local function GetCombatTool()
+    return Backpack:FindFirstChild('Combat') or Character:FindFirstChild('Combat')
+end
+
+local function IgnorePlayers()
+    if not Running then return end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild('HumanoidRootPart') then
+            p.Character.HumanoidRootPart.CanCollide = false
+        end
+    end
+end
+
+--// Money Collect
+local function GetNearbyMoneyDrops()
+    if not Running or not RootPart then return {} end
+    local drops = {}
+    for _, drop in ipairs(MoneyDropsFolder:GetChildren()) do
+        if drop.Name == 'MoneyDrop' and drop:FindFirstChild('ClickDetector') then
+            if (drop.Position - RootPart.Position).Magnitude <= COLLECT_RANGE then
+                table.insert(drops, drop)
+            end
+        end
+    end
+    return drops
+end
+
+local function TweenToPosition(targetPos)
+    if not Running or not RootPart or Humanoid.Health <= 0 then return end
+    local dist = (targetPos - RootPart.Position).Magnitude
+    local tweenTime = dist / TWEEN_SPEED
+    local originalAnchored = RootPart.Anchored
+    RootPart.Anchored = true -- ignoruje kolizje/przeszkody
+    local tween = TweenService:Create(
+        RootPart,
+        TweenInfo.new(tweenTime, Enum.EasingStyle.Linear),
+        {CFrame = CFrame.new(targetPos)}
+    )
+    tween:Play()
+    tween.Completed:Wait()
+    RootPart.Anchored = originalAnchored
+end
+
+local function CollectMoneyDrops(drops)
+    if not Running then return end
+    for _, drop in ipairs(drops) do
+        if not Running or not drop.Parent then continue end
+        SetStatus('Collecting MoneyDrop', true)
+        TweenToPosition(drop.Position + Vector3.new(0, 2, 0))
+        local start = tick()
+        while Running and drop.Parent and Humanoid.Health > 0 do
+            pcall(function()
+                fireclickdetector(drop.ClickDetector)
+            end)
+            if tick() - start > 5 then break end
+            task.wait(0.2)
+        end
+    end
+end
+
+--// Cashier handling
+local function GetPrimaryPart(cashier)
+    return cashier:FindFirstChild('HumanoidRootPart') or 
+           cashier:FindFirstChild('Head') or 
+           cashier:FindFirstChildWhichIsA('BasePart')
+end
+
+local function GetActiveCashiers()
+    if not Running then return {} end
+    local list = {}
+    for _, cashier in ipairs(CashiersFolder:GetChildren()) do
+        local hum = cashier:FindFirstChild('Humanoid')
+        if hum and hum.Health > 0 and not BlacklistedCashiers[cashier] then
+            local part = GetPrimaryPart(cashier)
+            if part then
+                table.insert(list, cashier)
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        local pa, pb = GetPrimaryPart(a), GetPrimaryPart(b)
+        return (pa.Position - RootPart.Position).Magnitude < (pb.Position - RootPart.Position).Magnitude
+    end)
+    SetStatus('Available Cashiers: ' .. #list, true)
+    return list
+end
+
+local function AttackCashier(cashier)
+    if not Running then return end
+    local hum = cashier:FindFirstChild('Humanoid')
+    local part = GetPrimaryPart(cashier)
+    if not hum or hum.Health <= 0 or not part then return end
+
+    local tool = GetCombatTool()
+    if not tool then
+        SetStatus('No Combat Tool', false)
+        return
+    end
+    if tool.Parent ~= Character then
+        tool.Parent = Character
+        task.wait(0.3)
+    end
+
+    SetStatus('Moving in front of Cashier', true)
+    local forward = part.CFrame.LookVector
+    local targetPos = part.Position - forward * ATTACK_DISTANCE + Vector3.new(0, UNDER_CASHIER_Y, 0)
+    RootPart.CFrame = CFrame.new(targetPos, part.Position)
+
+    SetStatus('Attacking Cashier', true)
+    local startTick = tick()
+    while Running and hum.Health > 0 and Humanoid.Health > MIN_HEALTH do
+        if tick() - startTick > CASHIER_ATTACK_TIMEOUT then
+            SetStatus('Cashier bugged, blacklisting', false)
+            BlacklistedCashiers[cashier] = true
+            Humanoid.Health = 0
+            task.wait(3)
+            UpdateReferences()
+            return
+        end
+
+        if tool.Parent ~= Character then
+            tool.Parent = Character
+        end
+
+        pcall(function()
+            mouse1press()
+            task.wait(3.2)
+            mouse1release()
+        end)
+
+        local newPos = part.Position - forward * ATTACK_DISTANCE + Vector3.new(0, UNDER_CASHIER_Y, 0)
+        RootPart.CFrame = CFrame.new(newPos, part.Position)
+
+        local drops = GetNearbyMoneyDrops()
+        if #drops > 0 then
+            CollectMoneyDrops(drops)
+        end
+
+        task.wait(0.2)
+    end
+    SetStatus('Cashier Defeated', true)
+    if tool.Parent == Character then
+        tool.Parent = Backpack
+    end
+    Cooldowns[cashier] = os.time()
+end
+
+--// Main loop
+local function MainLoop()
+    SetStatus('Main loop started', true)
+    UpdateReferences()
+    while task.wait(0.5) do
+        if not Running then
+            StatusLabel.Text = '[OFF]'
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            task.wait(1)
+            continue
+        end
+        
+        IgnorePlayers()
+        if not Character or not Humanoid or Humanoid.Health <= 0 then
+            continue
+        end
+        if Humanoid.Health <= MIN_HEALTH then
+            SetStatus('Low HP, resetting', false)
+            Humanoid.Health = 0
+            task.wait(3)
+            UpdateReferences()
+            continue
+        end
+
+        local drops = GetNearbyMoneyDrops()
+        if #drops > 0 then
+            CollectMoneyDrops(drops)
+        else
+            local active = GetActiveCashiers()
+            if #active > 0 then
+                AttackCashier(active[1])
+            else
+                SetStatus('No Cashiers available', false)
+            end
+        end
+    end
+end
+
+--// Events
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    UpdateReferences()
+end)
+
+--// Toggle setup
+local tab = api:GetTab("Fun Things!")
+local groupbox = tab:AddLeftGroupbox("kolkol DHC autofarm")
+
+groupbox:AddToggle("auto_farm", {
+    Text = "Auto Farm",
+    Default = false,
+    Callback = function(state)
+        Running = state
+        if state then
+            StatusLabel.Text = '[ON]'
+            StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            SetStatus('Starting...', true)
+        else
+            StatusLabel.Text = '[OFF]'
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        end
+    end
+})
+
+--// Start
+UpdateReferences()
+task.wait(1)
+MainLoop()
