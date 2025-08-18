@@ -294,17 +294,17 @@ local MoneyDropsFolder = Workspace:WaitForChild('Ignored'):WaitForChild('Drop')
 --// Config
 local MIN_HEALTH = 30
 local UNDER_CASHIER_Y = 0
-local COLLECT_RANGE = 25
+local COLLECT_RANGE = 40 -- większy zasięg dla szybszego zbierania
 local ATTACK_DISTANCE = 5
+local TWEEN_SPEED = 150 -- szybsze tepy
 local CASHIER_ATTACK_TIMEOUT = 12
-local TWEEN_SPEED = 120
 
 local Cooldowns = {}
 local BlacklistedCashiers = {}
 local Running = false
 
 --// GUI
-local ScreenGui = Instance.new('ScreenGui', PlayerGui)
+local ScreenGui = Instance.new('ScreenGui', LocalPlayer:WaitForChild('PlayerGui'))
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = false
 
@@ -327,9 +327,11 @@ StatusLabel.TextSize = 18
 StatusLabel.Text = '[OFF]'
 
 local function SetStatus(msg, good)
-    if not Running then return end
-    StatusLabel.Text = msg
-    StatusLabel.TextColor3 = good and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    if Running then
+        StatusLabel.Text = msg
+        StatusLabel.TextColor3 = good and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        print('[STATUS] ' .. msg)
+    end
 end
 
 --// Helpers
@@ -338,10 +340,7 @@ local function UpdateReferences()
     Humanoid = Character:WaitForChild('Humanoid')
     RootPart = Character:WaitForChild('HumanoidRootPart')
     Backpack = LocalPlayer:WaitForChild('Backpack')
-end
-
-local function GetCombatTool()
-    return Backpack:FindFirstChild('Combat') or Character:FindFirstChild('Combat')
+    SetStatus('References updated', true)
 end
 
 local function IgnorePlayers()
@@ -353,6 +352,7 @@ local function IgnorePlayers()
     end
 end
 
+--// Money Collect
 local function GetNearbyMoneyDrops()
     if not Running or not RootPart then return {} end
     local drops = {}
@@ -387,13 +387,13 @@ local function CollectMoneyDrops(drops)
         local start = tick()
         while Running and drop.Parent and Humanoid.Health > 0 do
             pcall(function() fireclickdetector(drop.ClickDetector) end)
-            if tick() - start > 5 then break end
-            task.wait(0.2)
+            if tick() - start > 3 then break end -- szybsze zakończenie
+            task.wait(0.15)
         end
     end
 end
 
---// Cashiers
+--// Cashier handling
 local function GetPrimaryPart(cashier)
     return cashier:FindFirstChild('HumanoidRootPart') or cashier:FindFirstChild('Head') or cashier:FindFirstChildWhichIsA('BasePart')
 end
@@ -412,6 +412,7 @@ local function GetActiveCashiers()
         local pa, pb = GetPrimaryPart(a), GetPrimaryPart(b)
         return (pa.Position - RootPart.Position).Magnitude < (pb.Position - RootPart.Position).Magnitude
     end)
+    SetStatus('Available Cashiers: ' .. #list, true)
     return list
 end
 
@@ -421,10 +422,7 @@ local function AttackCashier(cashier)
     local part = GetPrimaryPart(cashier)
     if not hum or hum.Health <= 0 or not part then return end
 
-    local tool = GetCombatTool()
-    if not tool then SetStatus('No Combat Tool', false) return end
-    if tool.Parent ~= Character then tool.Parent = Character task.wait(0.3) end
-
+    SetStatus('Moving in front of Cashier', true)
     local forward = part.CFrame.LookVector
     RootPart.CFrame = CFrame.new(part.Position - forward * ATTACK_DISTANCE + Vector3.new(0, UNDER_CASHIER_Y, 0), part.Position)
 
@@ -434,40 +432,32 @@ local function AttackCashier(cashier)
         if tick() - startTick > CASHIER_ATTACK_TIMEOUT then
             SetStatus('Cashier bugged, blacklisting', false)
             BlacklistedCashiers[cashier] = true
-            Humanoid.Health = 0
-            task.wait(3)
+            task.wait(2)
             UpdateReferences()
             return
         end
-
-        if tool.Parent ~= Character then tool.Parent = Character end
-
-        pcall(function() mouse1press() task.wait(3.2) mouse1release() end)
-
         RootPart.CFrame = CFrame.new(part.Position - forward * ATTACK_DISTANCE + Vector3.new(0, UNDER_CASHIER_Y, 0), part.Position)
-
-        local drops = GetNearbyMoneyDrops()
-        if #drops > 0 then CollectMoneyDrops(drops) end
-
         task.wait(0.2)
     end
     SetStatus('Cashier Defeated', true)
-    if tool.Parent == Character then tool.Parent = Backpack end
 end
 
---// Main Loop
+--// Main loop
 local function MainLoop()
+    SetStatus('Main loop started', true)
     UpdateReferences()
-    while true do
-        task.wait(0.5)
+    while task.wait(0.3) do
         if not Running then
             ScreenGui.Enabled = false
             StatusLabel.Text = '[OFF]'
             StatusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            task.wait(1)
             continue
         end
+
         ScreenGui.Enabled = true
         IgnorePlayers()
+
         if not Character or not Humanoid or Humanoid.Health <= 0 then continue end
         if Humanoid.Health <= MIN_HEALTH then
             SetStatus('Low HP, resetting', false)
@@ -491,15 +481,23 @@ local function MainLoop()
     end
 end
 
---// Toggle
+--// Events
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    UpdateReferences()
+end)
+
+--// Toggle setup (przykład z LinoriaLib)
+local api = getfenv().api or {}
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
-local groupbox = tab:AddRightGroupbox("AutoFarm Settings")
+local groupbox = tab:AddLeftGroupbox("AutoFarm Settings")
 local toggle = groupbox:AddToggle("AutoFarm", { Text = "Auto DHC Farm", Default = false })
+
 toggle:OnChanged(function(value)
     Running = value
-    ScreenGui.Enabled = value
 end)
 
 --// Start
+UpdateReferences()
+task.wait(1)
 MainLoop()
-
