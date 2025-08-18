@@ -294,9 +294,9 @@ local MoneyDropsFolder = Workspace:WaitForChild('Ignored'):WaitForChild('Drop')
 --// Config
 local MIN_HEALTH = 30
 local UNDER_CASHIER_Y = 0
-local COLLECT_RANGE = 40 -- większy zasięg dla szybszego zbierania
+local COLLECT_RANGE = 40
 local ATTACK_DISTANCE = 5
-local TWEEN_SPEED = 150 -- szybsze tepy
+local TWEEN_SPEED = 150
 local CASHIER_ATTACK_TIMEOUT = 12
 
 local Cooldowns = {}
@@ -387,7 +387,7 @@ local function CollectMoneyDrops(drops)
         local start = tick()
         while Running and drop.Parent and Humanoid.Health > 0 do
             pcall(function() fireclickdetector(drop.ClickDetector) end)
-            if tick() - start > 3 then break end -- szybsze zakończenie
+            if tick() - start > 3 then break end
             task.wait(0.15)
         end
     end
@@ -396,6 +396,10 @@ end
 --// Cashier handling
 local function GetPrimaryPart(cashier)
     return cashier:FindFirstChild('HumanoidRootPart') or cashier:FindFirstChild('Head') or cashier:FindFirstChildWhichIsA('BasePart')
+end
+
+local function GetCombatTool()
+    return Backpack:FindFirstChild('Combat') or Character:FindFirstChild('Combat')
 end
 
 local function GetActiveCashiers()
@@ -422,12 +426,20 @@ local function AttackCashier(cashier)
     local part = GetPrimaryPart(cashier)
     if not hum or hum.Health <= 0 or not part then return end
 
-    SetStatus('Moving in front of Cashier', true)
-    local forward = part.CFrame.LookVector
-    RootPart.CFrame = CFrame.new(part.Position - forward * ATTACK_DISTANCE + Vector3.new(0, UNDER_CASHIER_Y, 0), part.Position)
+    local tool = GetCombatTool()
+    if not tool then
+        SetStatus('No Combat Tool', false)
+        return
+    end
+
+    if tool.Parent ~= Character then
+        tool.Parent = Character
+        task.wait(0.2)
+    end
 
     SetStatus('Attacking Cashier', true)
     local startTick = tick()
+
     while Running and hum.Health > 0 and Humanoid.Health > MIN_HEALTH do
         if tick() - startTick > CASHIER_ATTACK_TIMEOUT then
             SetStatus('Cashier bugged, blacklisting', false)
@@ -436,7 +448,21 @@ local function AttackCashier(cashier)
             UpdateReferences()
             return
         end
+
+        -- ustawienie pozycji przed cashiera i poprawianie
+        local forward = part.CFrame.LookVector
         RootPart.CFrame = CFrame.new(part.Position - forward * ATTACK_DISTANCE + Vector3.new(0, UNDER_CASHIER_Y, 0), part.Position)
+
+        -- klikaj tool
+        pcall(function()
+            tool:Activate()
+        end)
+
+        local drops = GetNearbyMoneyDrops()
+        if #drops > 0 then
+            CollectMoneyDrops(drops)
+        end
+
         task.wait(0.2)
     end
     SetStatus('Cashier Defeated', true)
@@ -487,7 +513,7 @@ LocalPlayer.CharacterAdded:Connect(function()
     UpdateReferences()
 end)
 
---// Toggle setup (przykład z LinoriaLib)
+--// Toggle setup (LinoriaLib example)
 local api = getfenv().api or {}
 local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
 local groupbox = tab:AddLeftGroupbox("AutoFarm Settings")
