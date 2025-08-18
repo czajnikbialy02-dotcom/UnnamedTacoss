@@ -535,7 +535,6 @@ LocalPlayer.CharacterAdded:Connect(function()
 end)
 
 --// Toggle setup
-local tab = api:GetTab("Fun Things!")
 local groupbox = tab:AddLeftGroupbox("kolkol DHC autofarm")
 
 groupbox:AddToggle("auto_farm", {
