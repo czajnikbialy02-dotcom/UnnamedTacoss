@@ -535,24 +535,12 @@ LocalPlayer.CharacterAdded:Connect(function()
 end)
 
 --// Toggle setup
-local groupbox = tab:AddLeftGroupbox("kolkol DHC autofarm")
+local tab = api:GetTab("Fun things!") or api:AddTab("Fun things!")
+local toggle = groupbox:AddToggle("AutoFarm", { Text = "Auto DHC Farm", Default = false })
 
-groupbox:AddToggle("auto_farm", {
-    Text = "Auto Farm",
-    Default = false,
-    Callback = function(state)
-        Running = state
-        if state then
-            StatusLabel.Text = '[ON]'
-            StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-            SetStatus('Starting...', true)
-        else
-            StatusLabel.Text = '[OFF]'
-            StatusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        end
-    end
-})
-
+toggle:OnChanged(function(value)
+    running = value
+end)
 --// Start
 UpdateReferences()
 task.wait(1)
